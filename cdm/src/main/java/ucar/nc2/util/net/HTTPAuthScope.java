@@ -37,90 +37,33 @@ package ucar.nc2.util.net;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.util.LangUtils;
 
-import java.io.IOException;
+import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
 
+
+import static org.apache.http.auth.AuthScope.*;
+import static ucar.nc2.util.net.HTTPAuthScope.*;
+
+
 /**
  * The standard AuthScope does not provide sufficiently
- * fine grain authorization. So this class extends it
+ * fine grain authorization. In particular, we would
  * to support principals and datasets.
  */
 
 @org.apache.http.annotation.Immutable
-public class HTTPAuthScope extends AuthScope implements Cloneable
+abstract public class HTTPAuthScope
 {
 
     //////////////////////////////////////////////////
     // Constants
 
     public static final String ANY_PRINCIPAL = null;
-    public static final String ANY_PATH = null;
 
-    public static final HTTPAuthScope ANY
-        = new HTTPAuthScope(ANY_HOST, ANY_PORT, ANY_SCHEME, ANY_PRINCIPAL, ANY_PATH);
-
-    //////////////////////////////////////////////////
-    // Instance Variables
-
-    protected String principal;
-    protected String path;
-
-    // Get around the fact that the fields of AuthScope are private
-    protected String authscheme;
-    protected String realm;
-    protected String host;
-    protected int port;
-
-    //////////////////////////////////////////////////
-    // Constructor(s)
-
-    public HTTPAuthScope(String host, int port, String scheme, String principal, String path)
-    {
-        super(host, port, ANY_REALM, scheme); // set but ignore
-        setup(host, port, scheme, principal, path);
-    }
-
-    public HTTPAuthScope(String host, int port, String realm, String scheme)
-    {
-        this(host, port, scheme, ANY_PRINCIPAL, ANY_PATH);
-    }
-
-    public HTTPAuthScope(AuthScope scope, String principal, String path)
-    {
-        this(scope.getHost(), scope.getPort(), scope.getScheme(), principal, path);
-    }
-
-    public HTTPAuthScope(AuthScope scope)
-    {
-        this(scope, ANY_PRINCIPAL, ANY_PATH);
-    }
-
-    public HTTPAuthScope(String surl)
-        throws HTTPException
-    {
-        this(surl, ANY_SCHEME);
-    }
-
-    public HTTPAuthScope(String surl, String authscheme)
-        throws HTTPException
-    {
-        super(ANY_HOST, ANY_PORT, ANY_REALM, ANY_SCHEME); // set but ignore
-        URI uri = decompose(surl);
-        setup(uri.getHost(),uri.getPort(),authscheme,uri.getUserInfo(),uri.getPath());
-    }
-
-    protected void setup(String host, int port, String scheme, String principal, String path)
-    {
-        // Use the same rules as AuthScope v-a-v capitalization
-        this.host = (host == null) ? ANY_HOST : host.toLowerCase(Locale.ENGLISH);
-        this.port = (port < 0) ? ANY_PORT : port;
-        this.realm = ANY_REALM;
-        this.authscheme = (scheme == null) ? ANY_SCHEME : scheme.toUpperCase(Locale.ENGLISH);
-        this.principal = (principal == null) ? ANY_PRINCIPAL : principal;
-        this.path = (path == null) ? ANY_PATH : path;
-    }
+    public static final AuthScope ANY
+        = new AuthScope(ANY_HOST, ANY_PORT, ANY_REALM, ANY_SCHEME);
 
     //////////////////////////////////////////////////	
     // URL Decomposition
@@ -136,92 +79,8 @@ public class HTTPAuthScope extends AuthScope implements Cloneable
         }
     }
 
-    //////////////////////////////////////////////////	
-    // Accessors	
-
-    @Override
-    public String getScheme()
-    {
-        return this.authscheme;
-    }
-
-    protected String getAuthScheme() // better named alias
-    {
-        return getScheme();
-    }
-
-    @Override
-    public String getHost()
-    {
-        return this.host;
-    }
-
-    @Override
-    public int getPort()
-    {
-        return this.port;
-    }
-
-    public String getPrincipal()
-    {
-        return this.principal;
-    }
-
-    public String getPath()
-    {
-        return this.path;
-    }
-
-    //////////////////////////////////////////////////
-    // Misc. APIs
-
-    public boolean valid()
-    {
-        return (getAuthScheme() != null && getHost() != null);
-    }
-
-    @Override
-    public String toString()
-    {
-        return String.format("%s:%s%s%s%s",
-            (getAuthScheme() == ANY_SCHEME ?  "*" : getAuthScheme()),
-            (getPrincipal() == ANY_PRINCIPAL ? "*@" : getPrincipal() + "@"),
-            (getHost() == ANY_HOST ? "*" : getHost()),
-            (getPort() < 0 ? "" : ":" + getPort()),
-            (getPath() == ANY_PATH ? "*" : getPath()));
-    }
-
-
-    //////////////////////////////////////////////////
-    // (De-)Serialization
-
-    private void writeObject(java.io.ObjectOutputStream oos)
-        throws IOException
-    {
-        oos.writeObject(getAuthScheme());
-        oos.writeObject(getHost());
-        oos.writeInt(getPort());
-        oos.writeObject(getAuthScheme());
-        oos.writeObject(getRealm());
-        oos.writeObject(getPrincipal());
-        oos.writeObject(getPath());
-    }
-
-    private void readObject(java.io.ObjectInputStream ois)
-        throws IOException, ClassNotFoundException
-    {
-        this.authscheme = (String) ois.readObject();
-        this.host = (String) ois.readObject();
-        this.port = ois.readInt();
-        this.realm = (String) ois.readObject();
-        this.principal = (String) ois.readObject();
-        this.path = (String) ois.readObject();
-    }
-
-
     //////////////////////////////////////////////////
     // Equals and Equivalence interface
-
 
     /**
      * Equivalence algorithm:
@@ -232,7 +91,7 @@ public class HTTPAuthScope extends AuthScope implements Cloneable
      * or they are string equals, then return true
      * else return false.
      */
-    static boolean equivalent(HTTPAuthScope a1, HTTPAuthScope a2)
+    static boolean equivalent(AuthScope a1, AuthScope a2)
     {
         if(a1 == null || a2 == null)
             throw new NullPointerException();
@@ -245,70 +104,87 @@ public class HTTPAuthScope extends AuthScope implements Cloneable
         if(a1.getPort() != ANY_PORT && a2.getPort() != ANY_PORT
             && a1.getPort() != a2.getPort())
             return false;
-        if(a1.getPath() == ANY_PATH || a2.getPath() == ANY_PATH)
-            return true;
-        if(a1.getPath().startsWith(a2.getPath())
-            || a2.getPath().startsWith(a1.getPath()))
-            return true;
-        return false;
-    }
-
-    @Override
-    public boolean equals(Object other)
-    {
-        if(other == null || !(other instanceof AuthScope))
-            return false;
-        AuthScope as = (AuthScope) other;
-        // So it turns out that AuthScope#equals does not
-        // test for ANY_PORT, so we need to fix here.
-        if(true) {
-            boolean b1 = LangUtils.equals(this.host, as.getHost());
-            int aport = as.getPort();
-            boolean b2 = (this.port == aport || this.port == ANY_PORT || aport == ANY_PORT);
-            boolean b3 = LangUtils.equals(this.realm, as.getRealm());
-            boolean b4 = LangUtils.equals(this.authscheme, as.getScheme());
-            if(!(b1 && b2 && b3 && b4))
-                return false;
-        } else if(!super.equals(other))
-            return false;
-        HTTPAuthScope has;
-        if(as instanceof HTTPAuthScope)
-            has = (HTTPAuthScope) as;
-        else
-            has = (new HTTPAuthScope(as));
-
-        boolean b1 = LangUtils.equals(this.principal, has.principal);
-        // Special comparison for path
-        boolean b2 = (this.path == ANY_PATH || has.path == ANY_PATH || this.path.equals(has.path));
-        return b1 && b2;
-    }
-
-    /**
-     * Check is an HTTPAuthScope is "subsumed" by an AuthScope.
-     * Rules are a subset of equivalence.
-     */
-    static boolean subsumes(AuthScope as, HTTPAuthScope has)
-    {
-        if(as == null || has == null)
-            throw new NullPointerException();
-        if(as.getScheme() != ANY_SCHEME && has.getScheme() != ANY_SCHEME
-            && !as.getScheme().equals(has.getScheme()))
-            return false;
-        if(as.getHost() != ANY_HOST && has.getHost() != ANY_HOST
-            && !as.getHost().equals(has.getHost()))
-            return false;
-        if(as.getPort() != ANY_PORT && has.getPort() != ANY_PORT
-            && as.getPort() != has.getPort())
+        if(a1.getRealm() != ANY_REALM && a2.getRealm() != ANY_REALM
+            && !a1.getRealm().equals(a2.getRealm()))
             return false;
         return true;
     }
 
-    //////////////////////////////////////////////////
-    // Cloneable interface
-
-    public Object clone()
+    public static boolean identical(AuthScope a1, AuthScope a2)
     {
-        return new HTTPAuthScope(this, this.principal, this.path);
+        if(a2 == null ^ a1 == null)
+            return false;
+        // So it turns out that AuthScope#equals does not
+        // test port values correctly, so we need to fix here.
+        if(true) {
+            boolean b1 = LangUtils.equals(a1.getHost(), a2.getHost());
+            int aport = a2.getPort();
+            boolean b2 = (a1.getPort() == aport || a1.getPort() == ANY_PORT || aport == ANY_PORT);
+            boolean b3 = LangUtils.equals(a1.getRealm(), a2.getRealm());
+            boolean b4 = LangUtils.equals(a1.getScheme(), a2.getScheme());
+            if(!(b1 && b2 && b3 && b4))
+                return false;
+        } else if(!a1.equals(a2))
+            return false;
+        return true;
+    }
+
+    /**
+     * Check is a AuthScope is "subsumed" by another AuthScope.
+     * Alias for equivalence
+     */
+    static boolean subsumes(AuthScope as, AuthScope has)
+    {
+        return equivalent(as, has);
+    }
+
+    /**
+     * Create an AuthScope from a URL; pull out any principal
+     *
+     * @param surl       to convert
+     * @param principalp to store principal from url
+     * @returns an AuthScope instance
+     */
+
+    static public AuthScope
+    urlToScope(String authscheme, String surl, String[] principalp)
+        throws HTTPException
+    {
+        URI uri = HTTPAuthScope.decompose(surl);
+        AuthScope scope = new AuthScope(uri.getHost(),
+            uri.getPort(),
+            ANY_REALM,
+            authscheme);
+        if(principalp != null)
+            principalp[0] = uri.getUserInfo();
+        return scope;
+    }
+
+    static public boolean
+    wildcardMatch(String p1, String p2)
+    {
+        if(p1 == null ^ p2 == null)
+            return true;
+        return (p1.equals(p2));
+    }
+
+    static public void serializeScope(AuthScope scope, ObjectOutputStream oos)
+        throws IOException
+    {
+        oos.writeObject(scope.getHost());
+        oos.writeInt(scope.getPort());
+        oos.writeObject(scope.getRealm());
+        oos.writeObject(scope.getScheme());
+    }
+
+    static public AuthScope deserializeScope(ObjectInputStream oos)
+        throws IOException, ClassNotFoundException
+    {
+        String host = (String) oos.readObject();
+        int port = oos.readInt();
+        String realm = (String) oos.readObject();
+        String scheme = (String) oos.readObject();
+        return new AuthScope(host, port, realm, scheme);
     }
 
 }

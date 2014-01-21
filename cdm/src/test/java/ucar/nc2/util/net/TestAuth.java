@@ -71,7 +71,7 @@ public class TestAuth extends UnitTestCommon
         //               new EasySSLProtocolSocketFactory(),
         //               8843));
         HTTPSession.TESTING = true;
-        HTTPAuthProvider.TESTING = true;
+        HTTPCredentialsCache.TESTING = true;
         HTTPAuthStore.TESTING = true;
     }
 
@@ -80,7 +80,7 @@ public class TestAuth extends UnitTestCommon
     // the user+pwd; used in several places
     static class TestProvider implements CredentialsProvider, Serializable
     {
-        public int callcount = 0;// track # of times getCredentials is called
+        protected int callcount = 0;// track # of times getCredentials is called
 
         String username = null;
         String password = null;
@@ -89,6 +89,14 @@ public class TestAuth extends UnitTestCommon
         {
             this.username = username;
             this.password = password;
+            this.callcount = 0;
+        }
+
+        public int getCallCount()
+        {
+            int count = this.callcount;
+            this.callcount = 0;
+            return count;
         }
 
         // Credentials Provider Interface
@@ -96,9 +104,9 @@ public class TestAuth extends UnitTestCommon
         getCredentials(AuthScope scope) //AuthScheme authscheme, String host, int port, boolean isproxy)
         {
             UsernamePasswordCredentials creds = new UsernamePasswordCredentials(username, password);
-            System.err.printf("getCredentials called: creds=|%s| host=%s port=%d%n",
+            System.err.printf("TestCredentials.getCredentials called: creds=|%s| host=%s port=%d%n",
                 creds.toString(), scope.getHost(), scope.getPort());
-            callcount++;
+            this.callcount++;
             return creds;
         }
 
@@ -144,7 +152,6 @@ public class TestAuth extends UnitTestCommon
     {
         super(name);
         setTitle("DAP Authorization tests");
-
     }
 
     public TestAuth(String name)
@@ -215,8 +222,8 @@ public class TestAuth extends UnitTestCommon
             System.err.printf("\tlocal provider: status code = %d\n", status);
             pass = (status == 200 || status == 404); // non-existence is ok
             // Verify that getCredentials was called only once
-            assertTrue("Credentials provider called: " + provider.callcount,
-                provider.callcount == 1);
+            int count = provider.getCallCount();
+            assertTrue("Credentials provider called: " + count, count == 1);
 
             // try to read in the content
             byte[] contents = readbinaryfile(method.getResponseAsStream());
@@ -256,8 +263,8 @@ public class TestAuth extends UnitTestCommon
             if(pass) {
                 session.clearState();
                 // Test global credentials provider
-                HTTPAuthScope scope
-                    = new HTTPAuthScope(data.url, HTTPAuthPolicy.BASIC);
+                AuthScope scope
+                    = HTTPAuthScope.urlToScope(data.url, HTTPAuthPolicy.BASIC, null);
                 HTTPSession.setGlobalCredentials(scope, cred);
                 session = HTTPFactory.newSession(data.url);
                 method = HTTPFactory.Get(session);
@@ -278,6 +285,9 @@ public class TestAuth extends UnitTestCommon
     testBasic3() throws Exception
     {
         System.err.println("*** Testing: Cache Invalidation");
+        // Clear the cache and the global authstore
+        HTTPAuthStore.DEFAULTS.clear();
+        HTTPCredentialsCache.clearCache();
         for(AuthDataBasic data : basictests) {
             // Do each test with a bad password to cause cache invalidation
             TestProvider provider = new TestProvider(data.user, BADPASSWORD);
@@ -290,18 +300,18 @@ public class TestAuth extends UnitTestCommon
 
             System.err.printf("\tlocal provider: status code = %d\n", status);
 
-            assertTrue(status == 401); // must fail.
+            assertTrue(status == 401);
 
+            int count = provider.getCallCount();
             // Verify that getCredentials was called only once
-            assertTrue("Credentials provider called: " + provider.callcount,
-                provider.callcount == 1);
+            assertTrue("Credentials provider call count = " + count, count == 1);
 
             // Look at the invalidation list
-            List<HTTPAuthStore.Pair> testlist = HTTPAuthStore.testlist;
-            if(testlist.size() == 1) {
-               HTTPAuthStore.Pair pair = testlist.get(0);
-               pass = (pair.scope.getScheme().equals(HTTPAuthPolicy.BASIC.toUpperCase())
-                       && pair.creds instanceof UsernamePasswordCredentials);
+            List<HTTPCredentialsCache.Triple> removed = HTTPCredentialsCache.getTestList();
+            if(removed.size() == 1) {
+               HTTPCredentialsCache.Triple triple = removed.get(0);
+               pass = (triple.scope.getScheme().equals(HTTPAuthPolicy.BASIC.toUpperCase())
+                       && triple.creds instanceof UsernamePasswordCredentials);
             } else
                 pass = false;
 
@@ -349,8 +359,8 @@ public class TestAuth extends UnitTestCommon
                 throw new Exception("Cannot read client key store: " + keystore);
 
             CredentialsProvider provider = new HTTPSSLProvider(keystore, CLIENTPWD);
-            HTTPAuthScope scope
-                = new HTTPAuthScope(url, HTTPAuthPolicy.SSL);
+            AuthScope scope
+                = HTTPAuthScope.urlToScope(url, HTTPAuthPolicy.SSL,null);
             HTTPSession.setGlobalCredentialsProvider(scope, provider);
 
             HTTPSession session = HTTPFactory.newSession(url);
@@ -381,31 +391,26 @@ public class TestAuth extends UnitTestCommon
         CredentialsProvider credp3 = new TestProvider("p3", "pwd3");
         Credentials cred1 = new UsernamePasswordCredentials("u1", "pwd1");
         Credentials cred2 = new UsernamePasswordCredentials("u2", "pwd2");
-        HTTPAuthScope scope;
-        scope = new HTTPAuthScope(
+        AuthScope scope;
+        scope = new AuthScope(
             "http://ceda.ac.uk/dap/neodc/casix/seawifs_plankton/data/monthly/PSC_monthly_1998.nc.dds",
+            AuthScope.ANY_PORT, AuthScope.ANY_REALM,
             HTTPAuthPolicy.BASIC);
         // Add some entries to an HTTPAuthStore
         HTTPAuthStore store = new HTTPAuthStore();
 
-        scope = new HTTPAuthScope(
+        scope =  HTTPAuthScope.urlToScope(
             "http://ceda.ac.uk/dap/neodc/casix/seawifs_plankton/data/monthly/PSC_monthly_1998.nc.dds",
-            HTTPAuthPolicy.BASIC);
-        store.insert(scope, credp1);
+            HTTPAuthPolicy.BASIC, null);
+        store.insert(HTTPAuthScope.ANY_PRINCIPAL, scope, credp1);
 
-        scope = new HTTPAuthScope("http://ceda.ac.uk",
-            HTTPAuthPolicy.SSL);
-        store.insert(scope, credp2);
+        scope = HTTPAuthScope.urlToScope("http://ceda.ac.uk",
+            HTTPAuthPolicy.SSL,null);
+        store.insert(HTTPAuthScope.ANY_PRINCIPAL, scope, credp2);
 
-        scope = new HTTPAuthScope("http://ceda.ac.uk",
-            HTTPAuthPolicy.BASIC);
-        store.insert(scope, credp3);
-
-        // Add some entries to cache
-        scope = new HTTPAuthScope("http://x1");
-        store.cacheCredentials(scope, cred1);
-        scope = new HTTPAuthScope("http://x2");
-        store.cacheCredentials(scope, cred2);
+        scope = HTTPAuthScope.urlToScope("http://ceda.ac.uk",
+            HTTPAuthPolicy.BASIC, null);
+        store.insert(HTTPAuthScope.ANY_PRINCIPAL, scope, credp3);
 
         // Remove any old file
         File target1 = new File(TestLocal.temporaryDataDir + "serial1");
@@ -418,7 +423,6 @@ public class TestAuth extends UnitTestCommon
         InputStream istream = new FileInputStream(target1);
         ObjectInputStream ois = HTTPAuthStore.openobjectstream(istream, "password1");
         HTTPAuthStore newstore = HTTPAuthStore.getDeserializedStore(ois); // - cache
-        List<HTTPAuthStore.Pair> newcache = HTTPAuthStore.getDeserializedCache(ois);
 
         // compare
         List<HTTPAuthStore.Entry> rows = store.getAllRows();
@@ -445,23 +449,6 @@ public class TestAuth extends UnitTestCommon
             }
         }
         assertTrue("test(De-)Serialize", ok);
-
-        List<HTTPAuthStore.Pair> cache = store.getCache();
-        assertTrue("cache size mismatch", cache.size() == newstore.getCache().size());
-        // compare (not that we cannot actually test credentials for equality, so test keys).
-        for(HTTPAuthStore.Pair p: cache) {
-            boolean found = false;
-            for(HTTPAuthStore.Pair newp: newcache) {
-                if(!p.scope.equals(newp))
-                    continue;
-                Credentials creds = p.creds;
-                Credentials newcreds = newp.creds;
-                assertTrue(String.format("Credentials class mismatch for %s: %s::%s",
-                    p.scope, creds.getClass(), newcreds.getClass()),
-                    creds.getClass() == newcreds.getClass());
-            }
-            assertTrue("Missing scope",found);
-        }
     }
 
 

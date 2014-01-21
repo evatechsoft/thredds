@@ -33,16 +33,49 @@
 
 package ucar.nc2.util.net;
 
-import org.apache.http.auth.Credentials;
-import org.apache.http.client.CredentialsProvider;
+import org.apache.http.*;
+import org.apache.http.protocol.HttpContext;
 
-/**
-Define an interface that extends CredentialsProvider
-to provide a finer grain getCredentials method.
-*/
+import java.io.IOException;
 
-public interface  HTTPCredentialsProvider extends CredentialsProvider
+abstract public class HTTPUtil
 {
-    public Credentials getCredentials(HTTPAuthScope scope);
-    
+
+    //////////////////////////////////////////////////
+    // Header dump interceptors
+
+    static public class RequestHeaderDump implements HttpRequestInterceptor
+    {
+        @Override
+        synchronized public void
+        process(HttpRequest request, HttpContext context)
+            throws HttpException, IOException
+        {
+            Header[] hdrs = request.getAllHeaders();
+            if(hdrs == null) hdrs = new Header[0];
+            System.err.println("Request Headers:");
+            for(Header h: hdrs) {
+                System.err.println(h.toString());
+            }
+            System.err.flush();
+        }
+    }
+
+    static public class ResponseHeaderDump implements HttpResponseInterceptor
+    {
+        @Override
+        synchronized public void
+        process(HttpResponse response, HttpContext context)
+            throws HttpException, IOException
+        {
+            Header[] hdrs = response.getAllHeaders();
+            if(hdrs == null) hdrs = new Header[0];
+            System.err.println("Response Headers:");
+            for(Header h: hdrs) {
+                System.err.println(h.toString());
+            }
+            System.err.flush();
+        }
+    }
+
 }

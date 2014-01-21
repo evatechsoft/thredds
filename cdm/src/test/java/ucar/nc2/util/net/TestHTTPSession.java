@@ -81,7 +81,7 @@ public class TestHTTPSession extends UnitTestCommon
         HTTPSession session = HTTPFactory.newSession(TESTURL1);
 
         UnitTestCommon.InterceptRequest interceptor = new UnitTestCommon.InterceptRequest();
-        session.debugInterceptRequest(interceptor);
+        session.debugGlobal(interceptor,null);
 
         HTTPMethod method = HTTPFactory.Get(session);
         method.execute();

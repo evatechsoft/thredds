@@ -5988,6 +5988,8 @@ public class
         String arg = args[i];
         System.out.println(" " + arg);
       }
+
+        HTTPSession.debugHeaders();
     }
 
     //////////////////////////////////////////////////////////////////////////

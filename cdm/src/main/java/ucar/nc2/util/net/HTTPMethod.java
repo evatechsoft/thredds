@@ -43,6 +43,7 @@ import java.util.*;
 
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.http.*;
+import org.apache.http.auth.AuthScope;
 import org.apache.http.client.methods.*;
 import org.apache.http.message.BasicHeader;
 import org.apache.http.message.BasicHttpResponse;
@@ -291,7 +292,7 @@ public class HTTPMethod
             // Apply settings
             configure(this.request);
             setcontent(this.request);
-            HTTPAuthScope scope = setAuthentication();
+            AuthScope scope = setAuthentication();
 
             //todo: Change the retry handler
             //httpclient.setHttpRequestRetryHandler(myRetryHandler);
@@ -680,21 +681,22 @@ public class HTTPMethod
      * @return an authprovider encapsulting the request
      */
 
-    synchronized protected HTTPAuthScope
+    synchronized protected AuthScope
     setAuthentication()
         throws HTTPException
     {
         String surl = session.getURL();
-        // Creat an httpauthscope from the url
-        HTTPAuthScope scope;
+        // Creat a authscope from the url
+        AuthScope scope;
+        String[] principalp = new String[1];
         if(surl == null)
             scope = HTTPAuthScope.ANY;
         else
-            scope = new HTTPAuthScope(surl, HTTPAuthPolicy.BASIC);
+            scope = HTTPAuthScope.urlToScope(HTTPAuthPolicy.BASIC, surl, principalp);
 
         // Provide a credentials (provider) to enact the process
-        HTTPAuthProvider hap = new HTTPAuthProvider(this.session.getAuthStore(),
-            scope);
+        HTTPCredentialsCache hap = new HTTPCredentialsCache(this.session.getAuthStore(),
+            scope, principalp[0]);
 
         // New in httpclient 4.2; will need to change in 4.3
         this.session.setAuthentication(hap);
