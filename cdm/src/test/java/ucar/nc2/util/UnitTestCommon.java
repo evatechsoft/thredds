@@ -119,7 +119,9 @@ public class UnitTestCommon extends TestCase
 
         synchronized public Header[] getHeaders(String key)
         {
-            Header[] hdrs = this.request.getHeaders(key);
+            Header[] hdrs = null;
+            if(this.request != null)
+                hdrs = this.request.getHeaders(key);
             if(hdrs == null) hdrs = new Header[0];
             return hdrs;
         }
