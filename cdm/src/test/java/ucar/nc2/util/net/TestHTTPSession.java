@@ -77,11 +77,12 @@ public class TestHTTPSession extends UnitTestCommon
         System.out.println("*** Testing: User Agent");
         System.out.println("*** URL: " + TESTURL1);
         System.out.println("Test: HTTPSession.setGlobalUserAgent(" + GLOBALAGENT + ")");
-        HTTPSession.setGlobalUserAgent(GLOBALAGENT);
-        HTTPSession session = HTTPFactory.newSession(TESTURL1);
 
         UnitTestCommon.InterceptRequest interceptor = new UnitTestCommon.InterceptRequest();
-        session.debugGlobal(interceptor,null);
+        HTTPSession.debugGlobal(interceptor,null);
+
+        HTTPSession.setGlobalUserAgent(GLOBALAGENT);
+        HTTPSession session = HTTPFactory.newSession(TESTURL1);
 
         HTTPMethod method = HTTPFactory.Get(session);
         method.execute();
